@@ -474,22 +474,27 @@ class DataSimulator:
         """Generate a data point for a metric."""
         if metric not in self.trends:
             self.trends[metric] = {
-                "base": random.uniform(20, 80),
-                "trend": random.uniform(-0.1, 0.1),
+                "start_time": timestamp,
+                "base": random.uniform(40, 60),
+                "trend": random.uniform(-0.008, 0.008),
+                "trend_limit": random.uniform(4, 8),
                 "season_period": random.choice([60, 300, 600, 1800]),
-                "season_amplitude": random.uniform(5, 20),
-                "noise_std": random.uniform(1, 5),
+                "season_amplitude": random.uniform(4, 10),
+                "noise_std": random.uniform(1, 3),
                 "last_value": None
             }
 
         state = self.trends[metric]
-        t = timestamp
+        elapsed = max(0.0, timestamp - state["start_time"])
 
-        # Base value with trend
-        base = state["base"] + state["trend"] * t
+        # Use elapsed simulator time. A bounded trend avoids the linear trend
+        # growing without limit during the continuously running auto simulator.
+        signed_limit = math.copysign(state["trend_limit"], state["trend"])
+        trend = signed_limit * math.tanh(state["trend"] * elapsed / signed_limit)
+        base = state["base"] + trend
 
         # Seasonal component
-        seasonal = state["season_amplitude"] * math.sin(2 * math.pi * t / state["season_period"])
+        seasonal = state["season_amplitude"] * math.sin(2 * math.pi * elapsed / state["season_period"])
 
         # Random walk component
         if state["last_value"] is not None:
