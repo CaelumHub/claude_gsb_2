@@ -469,34 +469,41 @@ class DataSimulator:
         self.trends = {}
         self.seasonal = {}
         self.anomaly_injection = {}
+        self.start_time = time.time()
 
     def generate(self, metric: str, timestamp: float) -> float:
         """Generate a data point for a metric."""
         if metric not in self.trends:
             self.trends[metric] = {
-                "base": random.uniform(20, 80),
-                "trend": random.uniform(-0.1, 0.1),
-                "season_period": random.choice([60, 300, 600, 1800]),
-                "season_amplitude": random.uniform(5, 20),
-                "noise_std": random.uniform(1, 5),
+                "base": random.uniform(30, 70),
+                "trend_amplitude": random.uniform(3, 8),
+                "trend_period": random.choice([1800, 3600, 7200]),
+                "season_period": random.choice([60, 300, 600, 1200]),
+                "season_amplitude": random.uniform(3, 10),
+                "noise_std": random.uniform(1, 4),
                 "last_value": None
             }
 
         state = self.trends[metric]
-        t = timestamp
+        # Use elapsed simulator time. Unix epoch seconds multiplied by even a
+        # small slope would create an enormous trend and clamp every value.
+        t = timestamp - self.start_time
 
-        # Base value with trend
-        base = state["base"] + state["trend"] * t
+        # Bounded long-term trend
+        trend = state["trend_amplitude"] * math.sin(2 * math.pi * t / state["trend_period"])
 
         # Seasonal component
         seasonal = state["season_amplitude"] * math.sin(2 * math.pi * t / state["season_period"])
 
-        # Random walk component
+        target = state["base"] + trend + seasonal
+
+        # Mean-reverting random walk keeps short-term noise without drifting
+        # permanently toward 0 or 100.
         if state["last_value"] is not None:
             walk = random.gauss(0, state["noise_std"] * 0.3)
-            value = state["last_value"] * 0.7 + (base + seasonal) * 0.3 + walk
+            value = state["last_value"] * 0.7 + target * 0.3 + walk
         else:
-            value = base + seasonal + random.gauss(0, state["noise_std"])
+            value = target + random.gauss(0, state["noise_std"])
 
         # Inject anomalies occasionally (2% chance)
         if random.random() < 0.02:
